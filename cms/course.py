@@ -151,6 +151,16 @@ class Course:
         return self.seats_left > 0
 
     @property
+    def pending_enrollments(self) -> int:
+        """Seats still held by a student without a final result."""
+        return self.seats_taken
+
+    @property
+    def is_concluded(self) -> bool:
+        """``True`` once no seat is held by an unfinished record."""
+        return not self.__records or all(not r.is_active for r in self.__records.values())
+
+    @property
     def is_enrollment_open(self) -> bool:
         return self.__open
 
