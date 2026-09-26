@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import re
 import statistics
-from typing import TYPE_CHECKING, ClassVar, Iterator
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, ClassVar
 
 from cms.enrollment import Enrollment
 from cms.exceptions import (
@@ -34,6 +35,7 @@ from cms.exceptions import (
     DuplicateEnrollmentError,
     EnrollmentClosedError,
     PrerequisiteError,
+    RecordLockedError,
     ValidationError,
 )
 
@@ -118,7 +120,7 @@ class Course:
         return 1
 
     @property
-    def mentor(self) -> "Mentor | None":
+    def mentor(self) -> Mentor | None:
         return self.__mentor
 
     # ------------------------------------------------------------------
@@ -129,7 +131,7 @@ class Course:
         return tuple(self.__records.values())
 
     @property
-    def active_students(self) -> tuple["Student", ...]:
+    def active_students(self) -> tuple[Student, ...]:
         return tuple(r.student for r in self.__records.values() if r.is_active)
 
     @property
@@ -152,7 +154,7 @@ class Course:
     def is_enrollment_open(self) -> bool:
         return self.__open
 
-    def is_enrolled(self, student: "Student") -> bool:
+    def is_enrolled(self, student: Student) -> bool:
         return any(
             record.student is student and record.is_active for record in self.__records.values()
         )
@@ -160,7 +162,7 @@ class Course:
     # ------------------------------------------------------------------
     # Instance methods - the aggregate behaviour
     # ------------------------------------------------------------------
-    def enroll(self, student: "Student", by: "Mentor | None" = None) -> Enrollment:
+    def enroll(self, student: Student, by: Mentor | None = None) -> Enrollment:
         """Hand a seat to *student* and return the new enrollment record."""
         if student.role != "student":
             raise ValidationError(f"Only students can enroll, got {student.role!r}")
@@ -178,51 +180,63 @@ class Course:
         self.__records[student.user_id] = record
         return record
 
-    def unenroll(self, student: "Student") -> Enrollment:
+    def unenroll(self, student: Student) -> Enrollment:
         """Cancel the seat of *student* and keep the record for the audit trail."""
         record = self.__records.get(student.user_id)
-        if record is None or not record.is_active:
-            raise ValidationError(f"{student.name} is not enrolled in {self.__code}")
+        if record is None:
+            raise ValidationError(f"{student.name} has no enrollment record for {self.__code}")
+        if not record.is_active:
+            raise RecordLockedError(
+                f"{record.enrollment_id} is {record.status.lower()}; "
+                f"{student.name} already holds a finalised result for {self.__code}"
+            )
         return record.drop()
 
-    def assign_mentor(self, mentor: "Mentor | None") -> None:
+    def assign_mentor(self, mentor: Mentor | None) -> None:
         """Attach (or detach with ``None``) the mentor responsible for the course."""
         if mentor is not None and not mentor.can("teach"):
             raise ValidationError(f"{mentor.name} is not allowed to teach")
         self.__mentor = mentor
 
     def grade_student(
-        self, student: "Student", score: float, graded_by: "Mentor | None" = None
+        self, student: Student, score: float, graded_by: Mentor | None = None
     ) -> Enrollment:
         """Mentor facing entry point that awards the final grade."""
         record = self.__records.get(student.user_id)
-        if record is None or not record.is_active:
-            raise ValidationError(f"{student.name} is not enrolled in {self.__code}")
+        if record is None:
+            raise ValidationError(f"{student.name} has no enrollment record for {self.__code}")
+        if not record.is_active:
+            raise RecordLockedError(
+                f"{record.enrollment_id} is {record.status.lower()}; "
+                f"{student.name} already has a final grade for {self.__code}"
+            )
         if graded_by is not None and not self.is_teaching(graded_by):
             raise ValidationError(f"{graded_by.name} does not teach {self.__code}")
-        return record.grade(graded_by or self.__mentor, score)
+        marker = graded_by or self.__mentor
+        if marker is None:
+            raise ValidationError(f"{self.__code} has no mentor assigned to award the grade")
+        return record.award_grade(marker, score)
 
-    def is_teaching(self, mentor: "Mentor") -> bool:
+    def is_teaching(self, mentor: Mentor) -> bool:
         return self.__mentor is not None and self.__mentor is mentor
 
-    def open_enrollment(self) -> "Course":
+    def open_enrollment(self) -> Course:
         self.__open = True
         return self
 
-    def close_enrollment(self) -> "Course":
+    def close_enrollment(self) -> Course:
         self.__open = False
         return self
 
-    def can_enroll(self, student: "Student") -> bool:
+    def can_enroll(self, student: Student) -> bool:
         """Non raising eligibility check used by the CLI."""
         try:
             self._assert_prerequisites(student)
         except PrerequisiteError:
             return False
+        may_override = bool(self.__mentor and self.__mentor.can("override_capacity"))
         return (
-            self.__open
-            and not self.is_enrolled(student)
-            and (self.has_open_seats or bool(self.__mentor and self.__mentor.can("override_capacity")))
+            self.__open and not self.is_enrolled(student) and (self.has_open_seats or may_override)
         )
 
     # ------------------------------------------------------------------
@@ -308,7 +322,8 @@ class Course:
 
     @staticmethod
     def validate_capacity(capacity: int) -> int:
-        if isinstance(capacity, bool) or not isinstance(capacity, int) or not 1 <= capacity <= 500:
+        bad = isinstance(capacity, bool) or not isinstance(capacity, int)
+        if bad or not 1 <= capacity <= 500:
             raise ValidationError(f"Capacity must be an integer within 1-500, got {capacity!r}")
         return capacity
 
@@ -323,7 +338,7 @@ class Course:
 
     @staticmethod
     def _validate_fee(fee: float) -> float:
-        if isinstance(fee, bool) or not isinstance(fee, (int, float)) or fee < 0:
+        if isinstance(fee, bool) or not isinstance(fee, int | float) or fee < 0:
             raise ValidationError(f"Fee must be a non negative number, got {fee!r}")
         return float(fee)
 
@@ -338,7 +353,7 @@ class Course:
         capacity: int = 30,
         prerequisites: tuple[str, ...] = (),
         fee: float = 0.0,
-    ) -> "Course":
+    ) -> Course:
         """Create a course and derive its code from the title."""
         return cls(title, credits, capacity, None, prerequisites, fee)
 
@@ -371,7 +386,7 @@ class Course:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
-    def _assert_prerequisites(self, student: "Student") -> None:
+    def _assert_prerequisites(self, student: Student) -> None:
         missing = [code for code in self.__prerequisites if not student.has_completed_code(code)]
         if missing:
             raise PrerequisiteError(

@@ -150,7 +150,7 @@ class User(ABC):
         return f"{prefix.strip().upper()}-{next(cls._id_counter):04d}"
 
     @classmethod
-    def from_record(cls, record: dict[str, str]) -> "User":
+    def from_record(cls, record: dict[str, str]) -> User:
         """Rebuild a user from a plain dictionary (repository friendly)."""
         missing = {"user_id", "name", "email"} - record.keys()
         if missing:

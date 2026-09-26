@@ -75,16 +75,16 @@ class Student(User):
         return self.__year
 
     @property
-    def enrollments(self) -> tuple["Enrollment", ...]:
+    def enrollments(self) -> tuple[Enrollment, ...]:
         """Read only view of the enrollment records (defensive copy)."""
         return tuple(self.__enrollments)
 
     @property
-    def active_enrollments(self) -> tuple["Enrollment", ...]:
+    def active_enrollments(self) -> tuple[Enrollment, ...]:
         return tuple(e for e in self.__enrollments if e.is_active)
 
     @property
-    def completed_courses(self) -> tuple["Course", ...]:
+    def completed_courses(self) -> tuple[Course, ...]:
         return tuple(e.course for e in self.__enrollments if e.is_completed)
 
     # ------------------------------------------------------------------
@@ -103,13 +103,13 @@ class Student(User):
     # ------------------------------------------------------------------
     # Instance behaviour
     # ------------------------------------------------------------------
-    def enroll(self, course: "Course") -> "Enrollment":
+    def enroll(self, course: Course) -> Enrollment:
         """Join *course*; the course object owns validation and creation."""
         enrollment = course.enroll(self)
         self.__enrollments.append(enrollment)
         return enrollment
 
-    def drop(self, course: "Course") -> "Enrollment":
+    def drop(self, course: Course) -> Enrollment:
         """Leave *course*.
 
         The cancelled record stays on the transcript, only the active seat is
@@ -117,14 +117,14 @@ class Student(User):
         """
         return course.unenroll(self)
 
-    def submit_score(self, course: "Course", score: float) -> "Enrollment":
+    def submit_score(self, course: Course, score: float) -> Enrollment:
         """Hand in an assignment score; the mentor still has to grade it."""
         return self._enrollment_for(course).submit_score(score)
 
-    def enrolled_in(self, course: "Course") -> bool:
+    def enrolled_in(self, course: Course) -> bool:
         return any(e.course is course and e.is_active for e in self.__enrollments)
 
-    def has_completed(self, course: "Course") -> bool:
+    def has_completed(self, course: Course) -> bool:
         """Prerequisite check used by :class:`~cms.course.Course`."""
         return self.has_completed_code(course.code)
 
@@ -145,7 +145,7 @@ class Student(User):
         return round(sum(e.grade_points for e in graded) / len(graded), 2)
 
     @property
-    def graded_records(self) -> tuple["Enrollment", ...]:
+    def graded_records(self) -> tuple[Enrollment, ...]:
         return tuple(e for e in self.__enrollments if e.grade is not None)
 
     def academic_standing(self) -> str:
@@ -184,7 +184,7 @@ class Student(User):
     # ------------------------------------------------------------------
     @staticmethod
     def letter_grade(percentage: float) -> str:
-        """Convert a score percentage into a letter grade (grading policy lives in ``Enrollment``)."""
+        """Percentage -> letter grade (the policy itself lives in ``Enrollment``)."""
         return Enrollment.letter_grade(percentage)
 
     @staticmethod
@@ -215,20 +215,20 @@ class Student(User):
     # @classmethod alternative constructor
     # ------------------------------------------------------------------
     @classmethod
-    def register(cls, name: str, email: str, program: str = "BSc Computer Science") -> "Student":
+    def register(cls, name: str, email: str, program: str = "BSc Computer Science") -> Student:
         """Factory that allocates the next ``STU-xxxx`` id automatically."""
         return cls(cls.generate_id("STU"), name, email, program)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _enrollment_for(self, course: "Course") -> "Enrollment":
+    def _enrollment_for(self, course: Course) -> Enrollment:
         for record in self.__enrollments:
             if record.course is course and record.is_active:
                 return record
         raise ValidationError(f"{self.name} is not enrolled in {course.code}")
 
-    def _attach(self, enrollment: "Enrollment") -> None:
+    def _attach(self, enrollment: Enrollment) -> None:
         """Internal hook: register a record that a :class:`Course` has created."""
         if not any(record is enrollment for record in self.__enrollments):
             self.__enrollments.append(enrollment)
