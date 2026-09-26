@@ -1,0 +1,13 @@
+# Course Management System - dependencies
+#
+# The runtime code (cms/ and main.py) is written against the Python standard
+# library only, so there is nothing to install in order to run the demo:
+#
+#     python3 main.py
+#
+# The automated test-suite uses the stdlib `unittest` runner as well.
+#
+# The entries below are optional developer tooling.
+pytest>=8.0
+ruff>=0.5
+mypy>=1.10
