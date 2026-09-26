@@ -101,7 +101,7 @@ class User(ABC):
 
     def describe(self) -> str:
         """Template method: the layout lives here, the details in subclasses."""
-        return f"[{self.role.upper():<7}] {self.user_id} | {self.name} | {self.duties()}"
+        return f"[{self.role.upper():<15}] {self.user_id} | {self.name} | {self.duties()}"
 
     def notify(self, message: str) -> str:
         """Deliver a message to the user (overridden by ``PremiumMentor``)."""
