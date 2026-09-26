@@ -49,14 +49,14 @@ class Enrollment:
 
     def __init__(
         self,
-        student: "Student",
-        course: "Course",
+        student: Student,
+        course: Course,
         score: float | None = None,
     ) -> None:
         self.__id = f"ENR-{next(self._id_counter):04d}"
         self.__student = student
         self.__course = course
-        self.__score = None
+        self.__score: float | None = None
         self.__grade: str | None = None
         self.__status = "ENROLLED"
         self.__graded_by: Mentor | None = None
@@ -73,11 +73,11 @@ class Enrollment:
         return self.__id
 
     @property
-    def student(self) -> "Student":
+    def student(self) -> Student:
         return self.__student
 
     @property
-    def course(self) -> "Course":
+    def course(self) -> Course:
         return self.__course
 
     @property
@@ -97,7 +97,7 @@ class Enrollment:
         return self.__status
 
     @property
-    def graded_by(self) -> "Mentor | None":
+    def graded_by(self) -> Mentor | None:
         return self.__graded_by
 
     @property
@@ -127,7 +127,7 @@ class Enrollment:
     # ------------------------------------------------------------------
     # Instance methods - the state machine lives here
     # ------------------------------------------------------------------
-    def submit_score(self, score: float) -> "Enrollment":
+    def submit_score(self, score: float) -> Enrollment:
         """Student action: attach an assignment score (0-100)."""
         self._assert_open("submit a score")
         if self.__score is not None:
@@ -139,12 +139,15 @@ class Enrollment:
         self.__updated_at = datetime.now()
         return self
 
-    def grade(self, mentor: "Mentor", score: float | None = None) -> "Enrollment":
+    def award_grade(self, mentor: Mentor, score: float | None = None) -> Enrollment:
         """Mentor action: award the final letter grade and close the record."""
         self._assert_open("grade")
-        if score is None and self.__score is None:
-            raise ValidationError("Nothing to grade: the student has not submitted a score")
-        final_score = self.__score if score is None else self.validate_score(score)
+        if score is None:
+            final_score = self.__score
+            if final_score is None:
+                raise ValidationError("Nothing to grade: the student has not submitted a score")
+        else:
+            final_score = self.validate_score(score)
         self.__score = final_score
         self.__grade = self.letter_grade(final_score)
         self.__status = "COMPLETED"
@@ -152,7 +155,7 @@ class Enrollment:
         self.__updated_at = datetime.now()
         return self
 
-    def drop(self) -> "Enrollment":
+    def drop(self) -> Enrollment:
         """Registry action: release the seat, keeping the audit trail."""
         if self.__status == "COMPLETED":
             raise RecordLockedError(f"{self.enrollment_id} is completed and cannot be dropped")
@@ -171,7 +174,7 @@ class Enrollment:
     # ------------------------------------------------------------------
     @staticmethod
     def validate_score(score: float) -> float:
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
+        if isinstance(score, bool) or not isinstance(score, int | float):
             raise ValidationError(f"Score must be numeric, got {score!r}")
         if not 0 <= float(score) <= 100:
             raise ValidationError(f"Score must be within 0-100, got {score}")
@@ -212,7 +215,7 @@ class Enrollment:
     # @classmethod - the only supported constructor
     # ------------------------------------------------------------------
     @classmethod
-    def open(cls, student: "Student", course: "Course") -> "Enrollment":
+    def open(cls, student: Student, course: Course) -> Enrollment:
         """Create a fresh record in the ``ENROLLED`` state."""
         if student.role != "student":
             raise ValidationError(f"Only students can be enrolled, got {student.role}")

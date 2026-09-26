@@ -72,7 +72,7 @@ class Mentor(User):
         return updated
 
     @property
-    def courses(self) -> tuple["Course", ...]:
+    def courses(self) -> tuple[Course, ...]:
         return tuple(self.__courses)
 
     @property
@@ -98,7 +98,7 @@ class Mentor(User):
     # ------------------------------------------------------------------
     # Instance behaviour
     # ------------------------------------------------------------------
-    def teach(self, course: "Course") -> "Course":
+    def teach(self, course: Course) -> Course:
         """Take ownership of *course* (it cannot be orphaned)."""
         if course in self.__courses:
             raise ValidationError(f"{self.name} already teaches {course.code}")
@@ -106,7 +106,7 @@ class Mentor(User):
         self.__courses.append(course)
         return course
 
-    def release(self, course: "Course") -> None:
+    def release(self, course: Course) -> None:
         """Stop teaching *course* once all its seats are closed."""
         if course.has_open_seats:
             raise ValidationError(
@@ -116,10 +116,10 @@ class Mentor(User):
         course.assign_mentor(None)
         self.__courses = [c for c in self.__courses if c is not course]
 
-    def is_teaching(self, course: "Course") -> bool:
+    def is_teaching(self, course: Course) -> bool:
         return any(c is course for c in self.__courses)
 
-    def grade(self, course: "Course", student: "Student", score: float) -> "Enrollment":
+    def grade(self, course: Course, student: Student, score: float) -> Enrollment:
         """Grade *student* in *course*; only the assigned mentor may do this."""
         if not self.is_teaching(course):
             raise RolePermissionError(f"{self.name} does not teach {course.code}")
@@ -127,13 +127,13 @@ class Mentor(User):
             raise RolePermissionError("Only students can be graded")
         return course.grade_student(student, score, graded_by=self)
 
-    def students(self, course: "Course") -> tuple["Student", ...]:
+    def students(self, course: Course) -> tuple[Student, ...]:
         """Roster of *course* - resolved through the course, not duplicated."""
         if not self.is_teaching(course):
             raise RolePermissionError(f"{self.name} does not teach {course.code}")
         return course.active_students
 
-    def override_enroll(self, student: "Student", course: "Course") -> "Enrollment":
+    def override_enroll(self, student: Student, course: Course) -> Enrollment:
         """Force a seat even when the batch is full (premium mentors only).
 
         The permission check is polymorphic: only a role that advertises
@@ -166,7 +166,7 @@ class Mentor(User):
 
     @staticmethod
     def _validate_rating(rating: float) -> float:
-        if not isinstance(rating, (int, float)) or isinstance(rating, bool):
+        if isinstance(rating, bool) or not isinstance(rating, int | float):
             raise ValidationError(f"Rating must be numeric, got {rating!r}")
         if not 0 <= float(rating) <= 5:
             raise ValidationError(f"Rating must be within 0-5, got {rating}")
@@ -178,19 +178,19 @@ class Mentor(User):
     @classmethod
     def appoint(
         cls, name: str, email: str, department: str = "Computer Science", rating: float = 4.5
-    ) -> "Mentor":
+    ) -> Mentor:
         """Factory allocating the next ``MEN-xxxx`` identifier."""
         return cls(cls.generate_id("MEN"), name, email, department, rating)
 
     # ------------------------------------------------------------------
     # Operator overloading: sort mentors by rating
     # ------------------------------------------------------------------
-    def __lt__(self, other: "Mentor") -> bool:
+    def __lt__(self, other: Mentor) -> bool:
         if not isinstance(other, Mentor):
             return NotImplemented
         return self.__rating < other.__rating
 
-    def __le__(self, other: "Mentor") -> bool:
+    def __le__(self, other: Mentor) -> bool:
         if not isinstance(other, Mentor):
             return NotImplemented
         return self.__rating <= other.__rating
@@ -233,7 +233,7 @@ class PremiumMentor(Mentor):
             raise ValidationError("Office hour slot needs a day and a time window")
         self.__office_hours[day.strip().title()] = window.strip().upper()
 
-    def book_session(self, student: "Student", day: str) -> str:
+    def book_session(self, student: Student, day: str) -> str:
         """Book a paid 1:1 session; only a student may be a client."""
         if not isinstance(student, User) or student.role != "student":
             raise RolePermissionError("Only students can book a mentoring session")
@@ -269,16 +269,22 @@ class PremiumMentor(Mentor):
 
     @classmethod
     def hire(
-        cls, name: str, email: str, department: str = "Computer Science", session_fee: float = SESSION_PRICE
-    ) -> "PremiumMentor":
+        cls,
+        name: str,
+        email: str,
+        department: str = "Computer Science",
+        session_fee: float = SESSION_PRICE,
+    ) -> PremiumMentor:
         return cls(cls.generate_id("PMN"), name, email, department, 4.9, session_fee=session_fee)
 
     @staticmethod
     def _normalise_hours(hours: dict[str, str]) -> dict[str, str]:
-        return {str(day).strip().title(): str(window).strip().upper() for day, window in hours.items()}
+        return {
+            str(day).strip().title(): str(window).strip().upper() for day, window in hours.items()
+        }
 
     @staticmethod
     def _validate_fee(fee: float) -> float:
-        if not isinstance(fee, (int, float)) or isinstance(fee, bool) or fee <= 0:
+        if isinstance(fee, bool) or not isinstance(fee, int | float) or fee <= 0:
             raise ValidationError(f"Session fee must be a positive number, got {fee!r}")
         return float(fee)

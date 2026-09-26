@@ -1,4 +1,4 @@
-"""Course Management System - an OOP showcase package.
+r"""Course Management System - an OOP showcase package.
 
 Layering (bottom to top)::
 
