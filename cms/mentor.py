@@ -133,6 +133,22 @@ class Mentor(User):
             raise RolePermissionError(f"{self.name} does not teach {course.code}")
         return course.active_students
 
+    def override_enroll(self, student: "Student", course: "Course") -> "Enrollment":
+        """Force a seat even when the batch is full (premium mentors only).
+
+        The permission check is polymorphic: only a role that advertises
+        ``override_capacity`` in :meth:`permissions` may take this shortcut.
+        """
+        if not self.is_teaching(course):
+            raise RolePermissionError(f"{self.name} does not teach {course.code}")
+        if not self.can("override_capacity"):
+            raise RolePermissionError(
+                f"{self.name} ({self.role}) cannot exceed the capacity of {course.code}"
+            )
+        record = course.enroll(student, by=self)
+        student._attach(record)
+        return record
+
     def profile(self) -> str:
         return (
             f"{self.name} ({self.department}) | {len(self.__courses)} course(s) "
