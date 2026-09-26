@@ -607,11 +607,7 @@ result gets a GPA over **one** course, not four.
 ### 7.2 Branch graph
 
 ```
-*   Merge branch 'feature/tests-and-documentation'        <- Pull Request #1
-|\
-| * test(cms): add 93 unit tests covering every OOP concept and rule
-| * docs: add professional README and the full walkthrough
-| * docs: capture the verified execution output
+*   test(cms): add 93 unit tests + README + walkthrough    <- Pull Request #1 (squash)
 *   Merge branch 'feature/academy-service-and-cli'
 |\
 | * feat(app): add Academy service, Report renderers and the runnable demo
