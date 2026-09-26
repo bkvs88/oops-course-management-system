@@ -107,11 +107,16 @@ class Mentor(User):
         return course
 
     def release(self, course: Course) -> None:
-        """Stop teaching *course* once all its seats are closed."""
-        if course.has_open_seats:
+        """Stop teaching *course* once the batch is concluded.
+
+        A batch is concluded when no seat is held by a student who is still
+        waiting for a final result, so a mentor can never orphan a class that is
+        still running.
+        """
+        if not course.is_concluded:
             raise ValidationError(
-                f"{course.code} still has {course.seats_left} open seat(s); "
-                "wait for the batch to close before releasing it"
+                f"{course.code} still has {course.pending_enrollments} unfinished record(s); "
+                "finalise the batch before releasing it"
             )
         course.assign_mentor(None)
         self.__courses = [c for c in self.__courses if c is not course]
