@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from cms.enrollment import Enrollment
 from cms.exceptions import ValidationError
 from cms.user import User
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a circular import
     from cms.course import Course
-    from cms.enrollment import Enrollment
 
 __all__ = ["Student"]
 
@@ -30,16 +30,7 @@ class Student(User):
     """A learner who can enroll in courses and earn credit."""
 
     MAX_CREDITS: ClassVar[int] = 24
-    GRADE_TABLE: ClassVar[dict[str, float]] = {
-        "O": 10.0,
-        "A+": 9.0,
-        "A": 8.0,
-        "B+": 7.0,
-        "B": 6.0,
-        "C": 5.0,
-        "P": 4.0,
-        "F": 0.0,
-    }
+    GRADE_TABLE: ClassVar[dict[str, float]] = Enrollment.GRADE_SCALE
     STANDING_BANDS: ClassVar[tuple[tuple[float, str], ...]] = (
         (9.0, "Outstanding"),
         (8.0, "Excellent"),
@@ -135,7 +126,13 @@ class Student(User):
 
     def has_completed(self, course: "Course") -> bool:
         """Prerequisite check used by :class:`~cms.course.Course`."""
-        return any(e.course.code == course.code and e.is_completed for e in self.__enrollments)
+        return self.has_completed_code(course.code)
+
+    def has_completed_code(self, code: str) -> bool:
+        """Prerequisite check by course code (used while enrolling)."""
+        return any(
+            record.course.code == code and record.is_completed for record in self.__enrollments
+        )
 
     def credits_registered(self) -> int:
         return sum(e.course.credits for e in self.active_enrollments)
@@ -187,28 +184,14 @@ class Student(User):
     # ------------------------------------------------------------------
     @staticmethod
     def letter_grade(percentage: float) -> str:
-        """Convert a score percentage into a letter grade."""
-        if not 0 <= percentage <= 100:
-            raise ValidationError(f"Score percentage must be within 0-100, got {percentage}")
-        if percentage >= 90:
-            return "O"
-        if percentage >= 80:
-            return "A+"
-        if percentage >= 70:
-            return "A"
-        if percentage >= 60:
-            return "B+"
-        if percentage >= 50:
-            return "B"
-        if percentage >= 40:
-            return "C"
-        return "F"
+        """Convert a score percentage into a letter grade (grading policy lives in ``Enrollment``)."""
+        return Enrollment.letter_grade(percentage)
 
     @staticmethod
     def grade_points(letter: str) -> float:
         """Reverse lookup used when a mentor records a letter grade."""
         try:
-            return Student.GRADE_TABLE[str(letter).strip().upper()]
+            return Enrollment.GRADE_SCALE[str(letter).strip().upper()]
         except KeyError as exc:
             raise ValidationError(f"Unknown grade '{letter}'") from exc
 
@@ -244,3 +227,8 @@ class Student(User):
             if record.course is course and record.is_active:
                 return record
         raise ValidationError(f"{self.name} is not enrolled in {course.code}")
+
+    def _attach(self, enrollment: "Enrollment") -> None:
+        """Internal hook: register a record that a :class:`Course` has created."""
+        if not any(record is enrollment for record in self.__enrollments):
+            self.__enrollments.append(enrollment)
